@@ -5,15 +5,13 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 
-# 🔐 Seguridad de sesión
-app.secret_key = 'clave_super_segura_123456'
+# 🔐 Configuración de sesión
+app.secret_key = 'clave_super_segura'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
-# 🔗 Conexión a PostgreSQL (Render)
-conexion = psycopg2.connect(
-    os.environ.get("DATABASE_URL")
-)
+# 🔗 Conexión a la base de datos (Render)
+conexion = psycopg2.connect(os.environ.get("DATABASE_URL"))
 
 # =========================
 # 🏠 INICIO
@@ -22,10 +20,15 @@ conexion = psycopg2.connect(
 def inicio():
     usuario = session.get('usuario')
 
-    cursor = conexion.cursor()
-    cursor.execute("SELECT * FROM libros")
-    libros = cursor.fetchall()
-    cursor.close()
+    try:
+        cursor = conexion.cursor()
+        cursor.execute("SELECT * FROM libros")
+        libros = cursor.fetchall()
+        cursor.close()
+    except Exception as e:
+        conexion.rollback()  # 🔥 evita bloqueo
+        print("Error inicio:", e)
+        libros = []
 
     return render_template("index.html", usuario=usuario, libros=libros)
 
@@ -41,17 +44,15 @@ def registro():
 
         try:
             cursor = conexion.cursor()
-
-            hash_contrasena = generate_password_hash(contrasena)
+            hash_pass = generate_password_hash(contrasena)
 
             cursor.execute(
                 "INSERT INTO usuarios (nombre, correo, contrasena) VALUES (%s, %s, %s)",
-                (nombre, correo, hash_contrasena)
+                (nombre, correo, hash_pass)
             )
 
             conexion.commit()
             cursor.close()
-
             return redirect('/login')
 
         except Exception as e:
@@ -71,12 +72,7 @@ def login():
 
         try:
             cursor = conexion.cursor()
-
-            cursor.execute(
-                "SELECT * FROM usuarios WHERE correo=%s",
-                (correo,)
-            )
-
+            cursor.execute("SELECT * FROM usuarios WHERE correo=%s", (correo,))
             usuario = cursor.fetchone()
             cursor.close()
 
@@ -87,6 +83,7 @@ def login():
                 return "❌ Credenciales incorrectas"
 
         except Exception as e:
+            conexion.rollback()
             return f"Error: {e}"
 
     return render_template("login.html")
@@ -117,22 +114,13 @@ def agregar_libro():
             cursor = conexion.cursor()
 
             cursor.execute(
-                "SELECT * FROM libros WHERE titulo=%s AND autor=%s",
-                (titulo, autor)
+                "INSERT INTO libros (titulo, autor, categoria, stock, descripcion) VALUES (%s, %s, %s, %s, %s)",
+                (titulo, autor, categoria, stock, descripcion)
             )
-            existe = cursor.fetchone()
 
-            if existe:
-                mensaje = "⚠️ Este libro ya existe"
-            else:
-                cursor.execute(
-                    "INSERT INTO libros (titulo, autor, categoria, stock, descripcion) VALUES (%s, %s, %s, %s, %s)",
-                    (titulo, autor, categoria, stock, descripcion)
-                )
-                conexion.commit()
-                mensaje = "✅ Libro agregado"
-
+            conexion.commit()
             cursor.close()
+            mensaje = "✅ Libro agregado"
 
         except Exception as e:
             conexion.rollback()
@@ -162,14 +150,11 @@ def reservar(id_libro):
 
         id_usuario = usuario[0]
 
-        cursor.execute(
-            "SELECT stock FROM libros WHERE id_libro=%s",
-            (id_libro,)
-        )
+        cursor.execute("SELECT stock FROM libros WHERE id_libro=%s", (id_libro,))
         stock = cursor.fetchone()
 
         if not stock or stock[0] <= 0:
-            return "❌ No hay stock disponible"
+            return "❌ Sin stock"
 
         cursor.execute(
             "INSERT INTO reservas (id_usuario, id_libro, fecha_reserva, estado) VALUES (%s, %s, CURRENT_DATE, 'reservado')",
@@ -198,35 +183,38 @@ def mis_reservas():
     if 'usuario' not in session:
         return redirect('/login')
 
-    cursor = conexion.cursor()
+    try:
+        cursor = conexion.cursor()
 
-    cursor.execute(
-        "SELECT id_usuario FROM usuarios WHERE nombre=%s",
-        (session['usuario'],)
-    )
-    usuario = cursor.fetchone()
-    id_usuario = usuario[0]
+        cursor.execute(
+            "SELECT id_usuario FROM usuarios WHERE nombre=%s",
+            (session['usuario'],)
+        )
+        usuario = cursor.fetchone()
 
-    cursor.execute("""
-        SELECT reservas.id_reserva, libros.titulo, libros.autor, reservas.id_libro
-        FROM reservas
-        JOIN libros ON reservas.id_libro = libros.id_libro
-        WHERE reservas.id_usuario = %s
-    """, (id_usuario,))
+        id_usuario = usuario[0]
 
-    reservas = cursor.fetchall()
-    cursor.close()
+        cursor.execute("""
+            SELECT reservas.id_reserva, libros.titulo, libros.autor, reservas.id_libro
+            FROM reservas
+            JOIN libros ON reservas.id_libro = libros.id_libro
+            WHERE reservas.id_usuario = %s
+        """, (id_usuario,))
 
-    return render_template("mis_reservas.html", reservas=reservas)
+        reservas = cursor.fetchall()
+        cursor.close()
+
+        return render_template("mis_reservas.html", reservas=reservas)
+
+    except Exception as e:
+        conexion.rollback()
+        return f"Error: {e}"
 
 # =========================
 # ❌ CANCELAR RESERVA
 # =========================
 @app.route('/cancelar_reserva/<int:id_reserva>/<int:id_libro>', methods=['POST'])
 def cancelar_reserva(id_reserva, id_libro):
-    if 'usuario' not in session:
-        return redirect('/login')
-
     try:
         cursor = conexion.cursor()
 
