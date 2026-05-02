@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Mis Reservas</title>
+</head>
+<body>
+
+    <h1>Mis Reservas</h1>
+
+    {% if reservas %}
+        <ul>
+            {% for r in reservas %}
+                <li>
+                    {{ r[1] }} - {{ r[2] }}
+
+                    <form action="/cancelar_reserva/{{ r[0] }}/{{ r[3] }}" method="POST" style="display:inline;">
+                        <button type="submit">Cancelar</button>
+                    </form>
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>No tienes reservas</p>
+    {% endif %}
+
+    <br>
+    <a href="/">Volver</a>
+
+</body>
+</html>
