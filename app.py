@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, session
 import psycopg2
+import os
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
@@ -9,12 +10,9 @@ app.secret_key = 'clave_super_segura_123456'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
-# 🔗 Conexión a PostgreSQL
+# 🔗 Conexión a PostgreSQL (Render)
 conexion = psycopg2.connect(
-    host="localhost",
-    database="biblioteca_web",
-    user="admin",
-    password="admin123"
+    os.environ.get("DATABASE_URL")
 )
 
 # =========================
@@ -31,9 +29,8 @@ def inicio():
 
     return render_template("index.html", usuario=usuario, libros=libros)
 
-
 # =========================
-# 📝 REGISTRO (SEGURO)
+# 📝 REGISTRO
 # =========================
 @app.route('/registro', methods=['GET', 'POST'])
 def registro():
@@ -45,7 +42,6 @@ def registro():
         try:
             cursor = conexion.cursor()
 
-            # 🔐 Hash de contraseña
             hash_contrasena = generate_password_hash(contrasena)
 
             cursor.execute(
@@ -60,13 +56,12 @@ def registro():
 
         except Exception as e:
             conexion.rollback()
-            return f"Error en registro: {e}"
+            return f"Error: {e}"
 
     return render_template("registro.html")
 
-
 # =========================
-# 🔐 LOGIN (SEGURO)
+# 🔐 LOGIN
 # =========================
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -89,13 +84,12 @@ def login():
                 session['usuario'] = usuario[1]
                 return redirect('/')
             else:
-                return "❌ Correo o contraseña incorrectos"
+                return "❌ Credenciales incorrectas"
 
         except Exception as e:
-            return f"Error en login: {e}"
+            return f"Error: {e}"
 
     return render_template("login.html")
-
 
 # =========================
 # 🚪 LOGOUT
@@ -105,9 +99,8 @@ def logout():
     session.pop('usuario', None)
     return redirect('/')
 
-
 # =========================
-# 📚 AGREGAR LIBRO (SIN DUPLICADOS)
+# 📚 AGREGAR LIBRO
 # =========================
 @app.route('/agregar_libro', methods=['GET', 'POST'])
 def agregar_libro():
@@ -147,9 +140,8 @@ def agregar_libro():
 
     return render_template("agregar_libro.html", mensaje=mensaje)
 
-
 # =========================
-# 📖 RESERVAR (SEGURO)
+# 📖 RESERVAR
 # =========================
 @app.route('/reservar/<int:id_libro>', methods=['POST'])
 def reservar(id_libro):
@@ -159,7 +151,6 @@ def reservar(id_libro):
     try:
         cursor = conexion.cursor()
 
-        # Usuario
         cursor.execute(
             "SELECT id_usuario FROM usuarios WHERE nombre=%s",
             (session['usuario'],)
@@ -171,7 +162,6 @@ def reservar(id_libro):
 
         id_usuario = usuario[0]
 
-        # 🔒 Verificar stock
         cursor.execute(
             "SELECT stock FROM libros WHERE id_libro=%s",
             (id_libro,)
@@ -181,13 +171,11 @@ def reservar(id_libro):
         if not stock or stock[0] <= 0:
             return "❌ No hay stock disponible"
 
-        # Insertar reserva
         cursor.execute(
             "INSERT INTO reservas (id_usuario, id_libro, fecha_reserva, estado) VALUES (%s, %s, CURRENT_DATE, 'reservado')",
             (id_usuario, id_libro)
         )
 
-        # Reducir stock
         cursor.execute(
             "UPDATE libros SET stock = stock - 1 WHERE id_libro=%s",
             (id_libro,)
@@ -201,7 +189,6 @@ def reservar(id_libro):
     except Exception as e:
         conexion.rollback()
         return f"Error: {e}"
-
 
 # =========================
 # 📌 MIS RESERVAS
@@ -231,7 +218,6 @@ def mis_reservas():
     cursor.close()
 
     return render_template("mis_reservas.html", reservas=reservas)
-
 
 # =========================
 # ❌ CANCELAR RESERVA
@@ -263,29 +249,8 @@ def cancelar_reserva(id_reserva, id_libro):
         conexion.rollback()
         return f"Error: {e}"
 
-
-# =========================
-# 📊 TODAS LAS RESERVAS (ADMIN SIMPLE)
-# =========================
-@app.route('/todas_reservas')
-def todas_reservas():
-    cursor = conexion.cursor()
-
-    cursor.execute("""
-        SELECT usuarios.nombre, libros.titulo, reservas.fecha_reserva, reservas.estado
-        FROM reservas
-        JOIN usuarios ON reservas.id_usuario = usuarios.id_usuario
-        JOIN libros ON reservas.id_libro = libros.id_libro
-    """)
-
-    reservas = cursor.fetchall()
-    cursor.close()
-
-    return render_template("todas_reservas.html", reservas=reservas)
-
-
 # =========================
 # 🚀 RUN
 # =========================
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run()
