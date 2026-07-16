@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <title>Gestionar Sanciones</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+</head>
+
+<body class="bg-light">
+
+<div class="container mt-5">
+
+    <h2 class="mb-4">
+
+        ⚠ Sanciones
+
+    </h2>
+
+    {% if sanciones %}
+
+    <table class="table table-bordered table-hover shadow">
+
+        <thead class="table-dark">
+
+            <tr>
+
+                <th>ID</th>
+
+                <th>Usuario</th>
+
+                <th>Motivo</th>
+
+                <th>Fecha</th>
+
+                <th>Multa (S/)</th>
+
+                <th>Estado</th>
+
+                <th>Acción</th>
+
+            </tr>
+
+        </thead>
+
+        <tbody>
+
+        {% for s in sanciones %}
+
+            <tr>
+
+                <td>{{ s[0] }}</td>
+
+                <td>{{ s[1] }}</td>
+
+                <td>{{ s[2] }}</td>
+
+                <td>{{ s[3] }}</td>
+
+                <td>{{ s[4] }}</td>
+
+                <td>
+
+                    {% if s[5] == 'pagada' %}
+
+                    <span class="badge bg-success">Pagada</span>
+
+                    {% else %}
+
+                    <span class="badge bg-danger">Pendiente</span>
+
+                    {% endif %}
+
+                </td>
+
+                <td>
+
+                    {% if s[5] != 'pagada' %}
+
+                    <form action="/marcar_sancion_pagada/{{ s[0] }}" method="POST">
+
+                        <button class="btn btn-success btn-sm">Marcar pagada</button>
+
+                    </form>
+
+                    {% else %}
+
+                    <span class="text-muted">—</span>
+
+                    {% endif %}
+
+                </td>
+
+            </tr>
+
+        {% endfor %}
+
+        </tbody>
+
+    </table>
+
+    {% else %}
+
+    <div class="alert alert-info">
+
+        No hay sanciones registradas.
+
+    </div>
+
+    {% endif %}
+
+    <a href="/admin" class="btn btn-secondary">
+
+        ⬅ Volver al Panel
+
+    </a>
+
+</div>
+
+</body>
+
+</html>
